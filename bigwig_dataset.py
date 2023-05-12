@@ -13,35 +13,17 @@ from typing import Any, Union, List, Optional
 
 import util
 
-# hack to memorize an iterator so that we can do some faster random access.
-# obviously only works if you have enough memory to hold everything.
-# TODO: do some fancy ness with mutiple iterators to make this better.
-# Right now, this is not really any better than list(iter(base))
-class RandomAccessViaIter:
 
-    def __init__(self, base):
-        self.base = base
-        self.it = enumerate(self.base)
-        self.max_index = -1
-        self.cached_values = {
-        }
+def convert_single_to_list(maybe_list, base_type):
+    if isinstance(maybe_list, base_type):
+        return [maybe_list]
+    return maybe_list
 
-    def __getitem__(self, idx):
-        if idx > len(base) or idx < 0:
-            raise IndexError
-        if idx not in cached_values:
-            while self.max_index < idx:
-                self.max_index, value = next(self.it)
-                self.cached_values[self.max_index] = value
-
-        return cached_values[idx]
-
-    
 
 def tile_genome(
     sequence_length: int,
     reference_fasta: Union[str, Fasta],
-    gap_bed_list: Union[List[Union[BedTool, str]], BedTool, str],
+    gap_bed_list: Union[List[str], str],
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
     shuffle: Optional[bool] =False):
@@ -66,12 +48,10 @@ def tile_genome(
     if stride is None:
         stride = sequence_length
 
-    if not isinstance(reference_fasta, Fasta):
+    if isinstance(reference_fasta, str):
         reference_fasta = Fasta(reference_fasta)
-    if isinstance(gap_bed_list, str):
-        gap_bed_list = [gap_bed_list]
 
-
+    gap_bed_list = convert_single_to_list(gap_bed_list, str)
     if len(gap_bed_list) == 0:
         gap_bed = []
     else:
@@ -128,9 +108,9 @@ def tile_genome(
     return out
 
 def bigwig_dataset_generator(
-    bigwig_filenames,
-    reference_fasta,
-    sequence_bed,
+    bigwig_files: Union[List[str], str],
+    reference_fasta: Union[str, Fasta],
+    sequence_bed: Union[str, BedTool],
     start=0,
     end=-1):
     '''
@@ -146,13 +126,15 @@ def bigwig_dataset_generator(
             like regular array slicing)
     '''
 
-    if isinstance(bigwig_filenames, str):
-        bigwig_filenames = [bigwig_filenames]
-    bigwigs = [pyBigWig.open(bw) for bw in bigwig_filenames]
+    bigwig_files = convert_single_to_list(bigwig_files, str)
+
+    bigwigs = [pyBigWig.open(bw) for bw in bigwig_files]
     if not isinstance(sequence_bed, BedTool):
         sequence_bed = BedTool(sequence_bed)
     if not isinstance(reference_fasta, Fasta):
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
+    if not isinstance(sequence_bed, BedTool):
+        sequence_bed = BedTool(sequence_bed)
 
     for interval in sequence_bed[start:stop]:
         chrom = bed_line.chrom
@@ -173,56 +155,38 @@ class BigWigDataset(Dataset):
 
     the outputs are presented as dictionaries:
     {
-        'sequence': a numpy array of characters representing the genome sequence
+        'sequence': a numpy array of ascii codes representing the genome sequence
         'values': a list of numpy arrays containing the corresponding values.
     }
     '''
-    def __init__(self, bigwig_files: Union[List[str], str], reference_fasta, sequence_bed=None, sequence_length=None, gap_bed=None, stride=None, out_path=None):
+    def __init__(
+        self,
+        bigwig_files: Union[List[str], str],
+        reference_fasta_file: str,
+        input_bed_file: str
+    ):
         '''
         arguments:
             bigwig_files: a single string or a list of strings specifying the paths to the bigwig files.
-            reference_fasta: fasta file for the reference genome to use with these bigwig files.
-            sequence_bed: a bed file specifying the intervals to use in the dataset (optional; if not specified, then
-                sequence_length must be specified).
-            sequence_length: the length of the output sequences to extract from the reference_fasta. Should only be
-                used when sequence_bed is None. The dataset will tile the reference genome with sequences of length sequence_length.
-            gap_bed: if sequence_length is not None, this is a bed file specifying gaps that  will not be tiled in the reference.
-            stride: if sequence_length is not None, this specifies a stride for tiling the reference. If unspecified, will default to
-                sequence_length.
-            out_path: if sequence_bed is not specified, save the generated sequence_bed here (no saving if None)
+            reference_fasta_file: fasta file for the reference genome to use with these bigwig files.
+            input_bed_file: a bed file path specifying the intervals to use in the dataset
         '''
 
-        self.do_delete_bed  = out_path is None and sequence_bed is None
-
-        if sequence_length is not None and sequence_bed is not None:
-            raise ValueError('Must specify exactly one of sequence_length and sequence_bed')
-        if sequence_length is None and sequence_bed is None:
-            raise ValueError('Must specify exactly one of sequence_length and sequence_bed')
-
-        self.reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
-
-        self.sequence_length = sequence_length
-        if stride is None:
-            stride  = sequence_length
-        self.stride =  stride
-
-        
-
-        if sequence_bed is not None:
-            self.sequence_bed = BedTool(sequence_bed)
-        elif sequence_length is not None:
-            if isinstance(gap_bed, str):
-                gap_bed = [gap_bed]
-            self.sequence_bed = tile_genome(sequence_length, reference_fasta, gap_bed, stride, out_path, shuffle=True)
-
-        self.random_access_sequence_bed = None
-
-        self.length = len(self.sequence_bed)
+        self.reference_fasta_file = reference_fasta_file
+        self.reference_fasta = Fasta(reference_fasta_file, sequence_always_upper=True)
 
 
+        self.input_bed_file = input_bed_file
+        self.input_bed = BedTool(input_bed_file)
 
-        if isinstance(bigwig_files, str):
-            bigwig_files = [bigwig_files]
+        # if we need random access to the bed file, this attribute will
+        # be populated because BedTools[idx] is O(idx).
+        self.random_access_input_bed = None
+
+        self.length = len(self.input_bed)
+
+
+        bigwig_files = convert_single_to_list(bigwig_files, str)
 
         self.bigwig_files = bigwig_files
 
@@ -233,25 +197,16 @@ class BigWigDataset(Dataset):
     def __len__(self):
         return self.length
 
-    def __del__(self):
-
-        if self.do_delete_bed:
-            # we do this in a try/catch because the file might be deleted by another process
-            # if we are doing parallel data loaders.
-            try:
-                os.unlink(self.sequence_bed.fn)
-            except FileNotFoundError:
-                pass
 
 
     def __getitem__(self, idx):
 
         # bed_file[idx] is actually an O(idx) time operation.
         # so, we need some kind of hack to speed things up.
-        if self.random_access_sequence_bed is None:
-            self.random_access_sequence_bed = list(iter(self.sequence_bed))
+        if self.random_access_input_bed is None:
+            self.random_access_input_bed = list(iter(self.input_bed))
 
-        bed_line = self.random_access_sequence_bed[idx]
+        bed_line = self.random_access_input_bed[idx]
 
         chrom = bed_line.chrom
         start = bed_line.start
@@ -273,7 +228,7 @@ class BigWigDataset(Dataset):
             iter_start = 0
             iter_end = self.length
         else:
-            # floor (y+x-1)/y = ceil x/y
+            # following line uses the identity ceil x/y = floor (y+x-1)/y
             lines_per_worker = (self.length + worker_info.num_workers - 1) // worker_info.num_workers
 
             iter_start = worker_info.worker_id * lines_per_worker
@@ -282,8 +237,8 @@ class BigWigDataset(Dataset):
         return iter(
             bigwig_dataset_generator(
                 self.bigwig_files,
-                self.reference_fasta,
-                self.sequence_bed,
+                self.reference_fasta_file,
+                self.input_bed_file,
                 iter_start, iter_end
             )
         )
