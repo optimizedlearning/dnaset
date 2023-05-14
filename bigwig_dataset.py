@@ -6,8 +6,6 @@ from pybedtools import BedTool
 from pyfaidx import Fasta
 import numpy as np
 import tempfile
-import os
-import itertools
 
 from typing import Any, Union, List, Optional
 
@@ -26,7 +24,7 @@ def tile_genome(
     gap_bed_list: Union[List[str], str],
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
-    shuffle: Optional[bool] =False):
+    shuffle: Optional[bool] = False):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
     each line of the output will be a sequence of length sequence_length.
@@ -41,7 +39,7 @@ def tile_genome(
 
     returns:
         a BedTool object for the resulting bed file.
-        Note that if out_path is not supplied, the bed file is a  temporary file.
+        Note that if out_path is not supplied, the bed file is a temporary file.
         Probably the system has a policy to clean these up eventually, but it would be
         better for the  caller to take care of deleting it when finished otherwise.
     '''
@@ -98,12 +96,16 @@ def tile_genome(
         bed_fp.write(lines)
         bed_fp.seek(0)
 
-    # Open via file name so that it is inhereted properly by child processes.
+    # Open via file name so that it is inherited properly by child processes.
     out = BedTool(temp_file_name)
     if out_path is not None:
         bed_file_name  = out_path
         out = out.moveto(out_path)
         bed_fp.close()
+    
+    # Note that since we made the tempfile with mkstemp, it will be the 
+    # caller's responsibility to cleanup the tempfile when out_path == None.
+    # It may be ok most of the time to not clean it up and rely on some system policy.
 
     return out
 
