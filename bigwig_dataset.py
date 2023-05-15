@@ -102,8 +102,8 @@ def tile_genome(
         bed_file_name  = out_path
         out = out.moveto(out_path)
         bed_fp.close()
-    
-    # Note that since we made the tempfile with mkstemp, it will be the 
+
+    # Note that since we made the tempfile with mkstemp, it will be the
     # caller's responsibility to cleanup the tempfile when out_path == None.
     # It may be ok most of the time to not clean it up and rely on some system policy.
 
@@ -114,17 +114,17 @@ def bigwig_dataset_generator(
     reference_fasta: Union[str, Fasta],
     sequence_bed: Union[str, BedTool],
     start=0,
-    end=-1):
+    stop=-1):
     '''
     generates numpy sequence arrays from a bigwig and bed file.
-    
+
     arguments:
         bigwig_files: a single string or a list of strings specifying the paths to the bigwig files.
         reference_fasta: fasta file for the reference genome to use with these bigwig files.
         sequence_bed: a bed file specifying the intervals to use in the dataset.
         start: which row of the bed file to start at.
             Note that it will take O(start) time to yield the first value!
-        end: which row of the bed file to  end at (negative numbers index from the end of the file, just
+        stop: which row of the bed file to  end at (negative numbers index from the end of the file, just
             like regular array slicing)
     '''
 
@@ -139,11 +139,12 @@ def bigwig_dataset_generator(
         sequence_bed = BedTool(sequence_bed)
 
     for interval in sequence_bed[start:stop]:
-        chrom = bed_line.chrom
-        start = bed_line.start
-        stop = bed_line.stop
+        chrom = interval.chrom
+        start = interval.start
+        stop = interval.stop
 
-        sequence = np.asarray(reference_fasta[chrom][start:stop])
+        # we copy to make the resulting array mutable
+        sequence = util.seq_to_array(reference_fasta[chrom][start:stop]).copy()
         values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
 
         yield {
@@ -151,7 +152,7 @@ def bigwig_dataset_generator(
                 'values': values
                 }
 
-class BigWigDataset(Dataset):
+class BigWigDataset(IterableDataset):
     '''
     a wrapper for porting bigwig tracks to a pytorch dataset.
 
@@ -202,7 +203,6 @@ class BigWigDataset(Dataset):
 
 
     def __getitem__(self, idx):
-
         # bed_file[idx] is actually an O(idx) time operation.
         # so, we need some kind of hack to speed things up.
         if self.random_access_input_bed is None:
@@ -225,6 +225,7 @@ class BigWigDataset(Dataset):
 
 
     def __iter__(self):
+        print("ran iter")
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:
             iter_start = 0
@@ -236,14 +237,12 @@ class BigWigDataset(Dataset):
             iter_start = worker_info.worker_id * lines_per_worker
             iter_end = min(iter_start + lines_per_worker, self.length)
 
-        return iter(
-            bigwig_dataset_generator(
-                self.bigwig_files,
-                self.reference_fasta_file,
-                self.input_bed_file,
-                iter_start, iter_end
-            )
-        )
+        return bigwig_dataset_generator(
+                   self.bigwig_files,
+                   self.reference_fasta_file,
+                   self.input_bed_file,
+                   iter_start, iter_end
+                )
 
 
 
