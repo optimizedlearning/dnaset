@@ -113,8 +113,8 @@ def bigwig_dataset_generator(
     bigwig_files: Union[List[str], str],
     reference_fasta: Union[str, Fasta],
     sequence_bed: Union[str, BedTool],
-    start=0,
-    stop=-1):
+    start: int=0,
+    stop: int=-1):
     '''
     generates numpy sequence arrays from a bigwig and bed file.
 
@@ -186,8 +186,7 @@ class BigWigDataset(IterableDataset):
         # be populated because BedTools[idx] is O(idx).
         self.random_access_input_bed = None
 
-        self.length = len(self.input_bed)
-
+        self.length = None
 
         bigwig_files = convert_single_to_list(bigwig_files, str)
 
@@ -198,6 +197,13 @@ class BigWigDataset(IterableDataset):
 
 
     def __len__(self):
+        # TODO: pybedtools is embarassingly slow at calculating lengths,
+        # so we defer calculuation until needed. In future, we may need
+        # to find a replacement for pybedtools that is not so slow.
+        # For example, even a pure python implementation is faster even though
+        # pybedtools is using cython to parse the lines of the bed file...
+        if self.length is None:
+            self.length = len(self.input_bed)
         return self.length
 
 
@@ -225,7 +231,6 @@ class BigWigDataset(IterableDataset):
 
 
     def __iter__(self):
-        print("ran iter")
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:
             iter_start = 0
