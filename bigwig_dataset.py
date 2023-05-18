@@ -1,13 +1,13 @@
 
 import torch
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import IterableDataset
 import pyBigWig
 from pybedtools import BedTool
 from pyfaidx import Fasta
-import numpy as np
 import tempfile
+import random
 
-from typing import Any, Union, List, Optional
+from typing import Union, List, Optional
 
 import util
 
@@ -24,7 +24,8 @@ def tile_genome(
     gap_bed_list: Union[List[str], str],
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
-    shuffle: Optional[bool] = False):
+    shuffle: Optional[bool] = False
+        ):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
     each line of the output will be a sequence of length sequence_length.
@@ -32,16 +33,20 @@ def tile_genome(
     arguments:
         sequence_length: the sequence length for each line in the output.
         reference_fasta: the fasta file containing reference genome.
-        gap_bed_list: a list of file names for the bed files containing assembly gaps.
-        stride: distance between start of one sequence and start of next sequence (defauots to sequence_length).
+        gap_bed_list: a list of file names for the bed files containing
+            assembly gaps.
+        stride: distance between start of one sequence and start of next
+            sequence (defaults to sequence_length).
         out_path: if specified, save the bed output here.
         shuffle: whether to shuffle the lines in the output bed file.
 
     returns:
         a BedTool object for the resulting bed file.
-        Note that if out_path is not supplied, the bed file is a temporary file.
-        Probably the system has a policy to clean these up eventually, but it would be
-        better for the  caller to take care of deleting it when finished otherwise.
+        Note that if out_path is not supplied, the bed file is a temporary
+            file.
+        Probably the system has a policy to clean these up eventually, but it
+            would be better for the  caller to take care of deleting it when
+            finished otherwise.
     '''
     if stride is None:
         stride = sequence_length
@@ -53,9 +58,10 @@ def tile_genome(
     if len(gap_bed_list) == 0:
         gap_bed = []
     else:
-        gap_bed  = BedTool(gap_bed_list[0])
+        gap_bed = BedTool(gap_bed_list[0])
         if len(gap_bed_list) > 1:
-            gap_bed = gap_bed[0].cat(*[BedTool(bed)for bed in gap_bed_list[1:]])
+            gap_bed = gap_bed[0].cat(
+                *[BedTool(bed)for bed in gap_bed_list[1:]])
     gap_bed = gap_bed.sort()
 
     fd, temp_file_name = tempfile.mkstemp(suffix='.bigwig_torch.bed')
@@ -66,14 +72,13 @@ def tile_genome(
             }
 
     def write_bed(chrom, start, end):
-        if start >= end:
+        if start + sequence_length > end:
             return
 
         for line_start in range(start, end-start, stride):
             bed_fp.write(
                     f"{chrom}\t{line_start}\t{line_start + sequence_length}\n"
                     )
-
 
     for gap in gap_bed:
         chrom = gap.chrom
@@ -99,22 +104,23 @@ def tile_genome(
     # Open via file name so that it is inherited properly by child processes.
     out = BedTool(temp_file_name)
     if out_path is not None:
-        bed_file_name  = out_path
         out = out.moveto(out_path)
         bed_fp.close()
 
     # Note that since we made the tempfile with mkstemp, it will be the
     # caller's responsibility to cleanup the tempfile when out_path == None.
-    # It may be ok most of the time to not clean it up and rely on some system policy.
+    # It may be ok most of the time to not clean it up and rely on some
+    # system policy to eventually delete temporary files.
 
     return out
+
 
 def bigwig_dataset_generator(
     bigwig_files: Union[List[str], str],
     reference_fasta: Union[str, Fasta],
     sequence_bed: Union[str, BedTool],
-    start: int=0,
-    stop: int=-1):
+    start: int = 0,
+    stop: int = -1):
     '''
     generates numpy sequence arrays from a bigwig and bed file.
 
@@ -152,6 +158,7 @@ def bigwig_dataset_generator(
                 'values': values
                 }
 
+
 class BigWigDataset(IterableDataset):
     '''
     a wrapper for porting bigwig tracks to a pytorch dataset.
@@ -162,6 +169,7 @@ class BigWigDataset(IterableDataset):
         'values': a list of numpy arrays containing the corresponding values.
     }
     '''
+
     def __init__(
         self,
         bigwig_files: Union[List[str], str],
@@ -176,8 +184,9 @@ class BigWigDataset(IterableDataset):
         '''
 
         self.reference_fasta_file = reference_fasta_file
-        self.reference_fasta = Fasta(reference_fasta_file, sequence_always_upper=True)
-
+        self.reference_fasta = Fasta(
+            reference_fasta_file,
+            sequence_always_upper=True)
 
         self.input_bed_file = input_bed_file
         self.input_bed = BedTool(input_bed_file)
@@ -194,8 +203,6 @@ class BigWigDataset(IterableDataset):
 
         self.open_bigwig_files = [pyBigWig.open(bw) for bw in bigwig_files]
 
-
-
     def __len__(self):
         # TODO: pybedtools is embarassingly slow at calculating lengths,
         # so we defer calculuation until needed. In future, we may need
@@ -205,8 +212,6 @@ class BigWigDataset(IterableDataset):
         if self.length is None:
             self.length = len(self.input_bed)
         return self.length
-
-
 
     def __getitem__(self, idx):
         # bed_file[idx] is actually an O(idx) time operation.
@@ -221,14 +226,19 @@ class BigWigDataset(IterableDataset):
         stop = bed_line.stop
 
         # we copy to make the resulting array mutable
-        sequence = util.seq_to_array(self.reference_fasta[chrom][start:stop]).copy()
-        values = [bw.values(chrom, start, stop, numpy=True) for bw in self.open_bigwig_files]
+        sequence = util.seq_to_array(
+            self.reference_fasta[chrom][start:stop]
+        ).copy()
+
+        values = [
+            bw.values(chrom, start, stop, numpy=True)
+            for bw in self.open_bigwig_files
+        ]
 
         return {
                 'sequence': sequence,
                 'values': values
                 }
-
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
@@ -237,7 +247,8 @@ class BigWigDataset(IterableDataset):
             iter_end = self.length
         else:
             # following line uses the identity ceil x/y = floor (y+x-1)/y
-            lines_per_worker = (self.length + worker_info.num_workers - 1) // worker_info.num_workers
+            num_workers = worker_info.num_workers
+            lines_per_worker = (self.length + num_workers - 1) // num_workers
 
             iter_start = worker_info.worker_id * lines_per_worker
             iter_end = min(iter_start + lines_per_worker, self.length)
@@ -248,7 +259,3 @@ class BigWigDataset(IterableDataset):
                    self.input_bed_file,
                    iter_start, iter_end
                 )
-
-
-
-
