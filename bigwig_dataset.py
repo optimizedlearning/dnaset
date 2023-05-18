@@ -24,6 +24,7 @@ def tile_genome(
     gap_bed_list: Union[List[str], str],
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
+    enforce_common_length: bool = True,
     shuffle: Optional[bool] = False
         ):
     '''
@@ -38,6 +39,10 @@ def tile_genome(
         stride: distance between start of one sequence and start of next
             sequence (defaults to sequence_length).
         out_path: if specified, save the bed output here.
+        enforce_common_length: if True, all output sequences must have length
+            sequence_length. If False, there may be a few outputs with
+            shorter lengths (because the areas between gaps in the gap files
+            is not evenly divisible by sequence_length).
         shuffle: whether to shuffle the lines in the output bed file.
 
     returns:
@@ -72,7 +77,9 @@ def tile_genome(
             }
 
     def write_bed(chrom, start, end):
-        if start + sequence_length > end:
+        if start >= end:
+            return
+        if enforce_common_length and start + sequence_length > end:
             return
 
         for line_start in range(start, end-start, stride):
