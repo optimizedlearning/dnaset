@@ -7,7 +7,7 @@ from pyfaidx import Fasta
 import tempfile
 import random
 
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Callable
 
 import util
 
@@ -126,7 +126,7 @@ def bigwig_dataset_generator(
     bigwig_files: Union[List[str], str],
     reference_fasta: Union[str, Fasta],
     sequence_bed: Union[str, BedTool],
-    sequence_transform: Callable: util.seq_to_array,
+    sequence_transform: Callable = util.seq_to_array,
     start: int = 0,
     stop: int = -1):
     '''
@@ -185,7 +185,7 @@ class BigWigDataset(IterableDataset):
         bigwig_files: Union[List[str], str],
         reference_fasta_file: str,
         input_bed_file: str,
-        sequence_transform: Callable: util.seq_to_array,
+        sequence_transform: Callable= util.seq_to_array,
     ):
         '''
         arguments:
