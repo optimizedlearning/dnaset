@@ -1,6 +1,6 @@
 # Utilities for Loading Genomic Data in Pytorch
 
-on the scc, you will need to `module load python3 pytorch ucscutils bedtools gcc`
+on the scc, you will need to `module load python3/3.10.5 pytorch ucscutils bedtools gcc`
 and then set up a virtual environment (or `source`) a previous one:
 ```
 python -m venv dnaset_env
@@ -9,3 +9,7 @@ pip install --upgrade  pip
 pip install -r requirements.txt
 ```
 
+Note that we need a more recent python version, otherwise some of the huggingface libraries will complain with some SSL errors.
+
+You can do all of this with a `source scc_setup.sh`. Note that the first time this runs it will take a long time (because the `pip install`
+will compile a bunch of comp bio tools).

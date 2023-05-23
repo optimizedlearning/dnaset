@@ -126,6 +126,7 @@ def bigwig_dataset_generator(
     bigwig_files: Union[List[str], str],
     reference_fasta: Union[str, Fasta],
     sequence_bed: Union[str, BedTool],
+    sequence_transform: Callable: util.seq_to_array,
     start: int = 0,
     stop: int = -1):
     '''
@@ -135,6 +136,8 @@ def bigwig_dataset_generator(
         bigwig_files: a single string or a list of strings specifying the paths to the bigwig files.
         reference_fasta: fasta file for the reference genome to use with these bigwig files.
         sequence_bed: a bed file specifying the intervals to use in the dataset.
+        sequence_transform: a function called to transform the output sequence.
+            defaults to converting the sequence into a numpy array.
         start: which row of the bed file to start at.
             Note that it will take O(start) time to yield the first value!
         stop: which row of the bed file to  end at (negative numbers index from the end of the file, just
@@ -157,7 +160,7 @@ def bigwig_dataset_generator(
         stop = interval.stop
 
         # we copy to make the resulting array mutable
-        sequence = util.seq_to_array(reference_fasta[chrom][start:stop]).copy()
+        sequence = sequence_transform(reference_fasta[chrom][start:stop])
         values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
 
         yield {
@@ -181,13 +184,16 @@ class BigWigDataset(IterableDataset):
         self,
         bigwig_files: Union[List[str], str],
         reference_fasta_file: str,
-        input_bed_file: str
+        input_bed_file: str,
+        sequence_transform: Callable: util.seq_to_array,
     ):
         '''
         arguments:
             bigwig_files: a single string or a list of strings specifying the paths to the bigwig files.
             reference_fasta_file: fasta file for the reference genome to use with these bigwig files.
             input_bed_file: a bed file path specifying the intervals to use in the dataset
+            sequence_transform: a function called to transform the output sequence.
+                defaults to converting the sequence into a numpy array.
         '''
 
         self.reference_fasta_file = reference_fasta_file
@@ -197,6 +203,8 @@ class BigWigDataset(IterableDataset):
 
         self.input_bed_file = input_bed_file
         self.input_bed = BedTool(input_bed_file)
+
+        self.sequence_transform = sequence_transform
 
         # if we need random access to the bed file, this attribute will
         # be populated because BedTools[idx] is O(idx).
@@ -233,9 +241,9 @@ class BigWigDataset(IterableDataset):
         stop = bed_line.stop
 
         # we copy to make the resulting array mutable
-        sequence = util.seq_to_array(
+        sequence = self.sequence_transform(
             self.reference_fasta[chrom][start:stop]
-        ).copy()
+        )
 
         values = [
             bw.values(chrom, start, stop, numpy=True)
@@ -261,8 +269,10 @@ class BigWigDataset(IterableDataset):
             iter_end = min(iter_start + lines_per_worker, self.length)
 
         return bigwig_dataset_generator(
-                   self.bigwig_files,
-                   self.reference_fasta_file,
-                   self.input_bed_file,
-                   iter_start, iter_end
+                    self.bigwig_files,
+                    self.reference_fasta_file,
+                    self.input_bed_file,
+                    self.sequence_transform,
+                    iter_start,
+                    iter_end,
                 )
