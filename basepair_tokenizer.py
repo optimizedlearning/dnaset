@@ -4,7 +4,7 @@ import util
 
 import torch
 import transformers
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizerFast
 from tokenizers import (
         decoders,
         models,
@@ -19,6 +19,7 @@ from pyfaidx import Fasta
 from datasets import Dataset
 
 import random
+
 
 def batch_iterator(dataset, batch_size, num_bed_lines):
     '''
@@ -50,7 +51,7 @@ def build_tokenizer(
             remaining fasta files are tokenizer completely.
 
     returns:
-        a Tokenizer object containing a BPE tokenizer.
+        a PreTrainedTokenizerFast object containing a BPE tokenizer.
     '''
 
     def generator():
@@ -85,8 +86,16 @@ def build_tokenizer(
 
     tokenizer.train_from_iterator(generator, trainer=trainer)
 
-    
-    return tokenizer
+    wrapped_tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=tokenizer,
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        cls_token="[CLS]",
+        sep_token="[SEP]",
+        mask_token="[MASK]",
+        )
+   
+    return wrapped_tokenizer
 
     
 

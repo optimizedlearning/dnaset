@@ -13,3 +13,10 @@ Note that we need a more recent python version, otherwise some of the huggingfac
 
 You can do all of this with a `source scc_setup.sh`. Note that the first time this runs it will take a long time (because the `pip install`
 will compile a bunch of comp bio tools).
+
+Trained tokenizer files are located in `/projectnb/aclab/dnaset/saved_tokenizers/`. For example:
+```
+from transformers import PreTrainedTokenizerFast
+tokenizer = PreTrainedTokenizerFast.from_pretraine('/projectnb/aclab/dnaset/saved_tokenizers/multispecies.32768')
+tokenizer.encode('ACCTCAGCATTGACTCTA') # -> [11530, 17266, 161]
+```
