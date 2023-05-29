@@ -9,7 +9,7 @@ import random
 
 from typing import Union, List, Optional, Callable
 
-import util
+import dnaset.util as util
 
 def test_function():
     print('hello')
