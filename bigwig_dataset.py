@@ -93,20 +93,23 @@ def tile_genome(
         gap_end = gap.end
 
         write_bed(chrom, assembly_starts[chrom], gap_start)
-
+        
         assembly_starts[chrom] = gap_end
 
     for chrom in reference_fasta.keys():
         write_bed(chrom, assembly_starts[chrom], len(reference_fasta[chrom]))
 
-    bed_fp.seek(0)
+
 
     if shuffle:
+        bed_fp.close()
+        bed_fp = open(temp_file_name, mode='r')
         lines = bed_fp.readlines()
+        bed_fp.close()
         random.shuffle(lines)
-        bed_fp.seek(0)
+        bed_fp = open(temp_file_name, mode='w')
         bed_fp.write(lines)
-        bed_fp.seek(0)
+        
 
     # Open via file name so that it is inherited properly by child processes.
     out = BedTool(temp_file_name)
