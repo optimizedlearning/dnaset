@@ -11,8 +11,6 @@ from typing import Union, List, Optional, Callable
 
 import dnaset.util as util
 
-def test_function():
-    print('hello')
     
 
 def convert_single_to_list(maybe_list, base_type):
@@ -28,7 +26,9 @@ def tile_genome(
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
     enforce_common_length: bool = True,
-    shuffle: Optional[bool] = False
+    shuffle: Optional[bool] = False,
+    out_paths: Optional[List[str]] = None,
+    test_split: Optional[float] = None
         ):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
@@ -73,7 +73,7 @@ def tile_genome(
     gap_bed = gap_bed.sort()
 
     fd, temp_file_name = tempfile.mkstemp(suffix='.bigwig_torch.bed')
-    bed_fp = open(temp_file_name, mode='w')
+    bed_fp = open(temp_file_name, mode='w+')
 
     assembly_starts = {
             chrom: 0 for chrom in reference_fasta.keys()
@@ -104,28 +104,51 @@ def tile_genome(
 
 
 
+    bed_fp.seek(0)
+
     if shuffle:
-        bed_fp.close()
-        bed_fp = open(temp_file_name, mode='r')
         lines = bed_fp.readlines()
-        bed_fp.close()
         random.shuffle(lines)
-        bed_fp = open(temp_file_name, mode='w')
+        bed_fp.seek(0)
         bed_fp.write(lines)
+        bed_fp.seek(0)
         
+    if test_split:
+        bed_fp_train = bed_fp
+        temp_file_name_train = temp_file_name
+        lines = bed_fp.readlines()
+        bed_fp_train.seek(0)
+        bed_fp_train.truncate(0) #clears file contents
 
-    # Open via file name so that it is inherited properly by child processes.
-    out = BedTool(temp_file_name)
-    if out_path is not None:
-        out = out.moveto(out_path)
-        bed_fp.close()
+        fd, temp_file_name_test = tempfile.mkstemp(suffix='.bigwig_torch.bed')
+        bed_fp_test = open(temp_file_name_test, mode='w')
+        
+        import math
+        split_idx = math.floor(len(lines)*test_split) 
+        bed_fp_train.write(lines[split_idx:])
+        bed_fp_test.write(lines[:split_idx])
+        
+        fps = [bed_fp_train, bed_fp_test]
+        tmps = [temp_file_name_train, temp_file_name_test]
+        outs = [BedTool(tmp) for tmp in tmps]
+        if out_paths is not None:
+            [out.moveto(pth) for (out, pth) in zip(outs,tmps)]
+            [fp.close() for fp in fps]
+        return outs
 
-    # Note that since we made the tempfile with mkstemp, it will be the
-    # caller's responsibility to cleanup the tempfile when out_path == None.
-    # It may be ok most of the time to not clean it up and rely on some
-    # system policy to eventually delete temporary files.
+    else:
+        # Open via file name so that it is inherited properly by child processes.
+        out = BedTool(temp_file_name)
+        if out_path is not None:
+            out = out.moveto(out_path)
+            bed_fp.close()
 
-    return out
+        # Note that since we made the tempfile with mkstemp, it will be the
+        # caller's responsibility to cleanup the tempfile when out_path == None.
+        # It may be ok most of the time to not clean it up and rely on some
+        # system policy to eventually delete temporary files.
+
+        return out
 
 
 def bigwig_dataset_generator(
