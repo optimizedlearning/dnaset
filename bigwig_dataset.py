@@ -11,6 +11,9 @@ from typing import Union, List, Optional, Callable
 
 import util
 
+def test_function():
+    print('hello')
+    
 
 def convert_single_to_list(maybe_list, base_type):
     if isinstance(maybe_list, base_type):
