@@ -110,7 +110,7 @@ def tile_genome(
         lines = bed_fp.readlines()
         random.shuffle(lines)
         bed_fp.seek(0)
-        bed_fp.write(lines)
+        bed_fp.writelines(lines)
         bed_fp.seek(0)
         
     if test_split:
@@ -125,8 +125,8 @@ def tile_genome(
         
         import math
         split_idx = math.floor(len(lines)*test_split) 
-        bed_fp_train.write(lines[split_idx:])
-        bed_fp_test.write(lines[:split_idx])
+        bed_fp_train.writelines(lines[split_idx:])
+        bed_fp_test.writelines(lines[:split_idx])
         
         fps = [bed_fp_train, bed_fp_test]
         tmps = [temp_file_name_train, temp_file_name_test]
