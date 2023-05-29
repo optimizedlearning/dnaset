@@ -10,7 +10,7 @@ import random
 from typing import Union, List, Optional, Callable
 
 import dnaset.util as util
-
+import math
     
 
 def convert_single_to_list(maybe_list, base_type):
@@ -109,32 +109,24 @@ def tile_genome(
     if shuffle:
         lines = bed_fp.readlines()
         random.shuffle(lines)
-        bed_fp.seek(0)
-        bed_fp.writelines(lines)
-        bed_fp.seek(0)
         
     if test_split:
-        bed_fp_train = bed_fp
-        temp_file_name_train = temp_file_name
-        lines = bed_fp.readlines()
-        bed_fp_train.seek(0)
-        bed_fp_train.truncate(0) #clears file contents
+        bed_fp.close()
+        #tfn = temp file name
+        fd, train_tfn = tempfile.mkstemp(suffix='.bigwig_torch.bed')
+        fd, test_tfn = tempfile.mkstemp(suffix='.bigwig_torch.bed')
+        tfns = [train_tfn, test_tfn]
+        fps = [open(tfn,"w") for tfn in [train_tfn, test_tfn]]
+        
+        split_idx = math.floor(test_split*len(lines))
+        fps[0].writelines(lines[split_idx:])
+        fps[1].writelines(lines[:split_idx])
 
-        fd, temp_file_name_test = tempfile.mkstemp(suffix='.bigwig_torch.bed')
-        bed_fp_test = open(temp_file_name_test, mode='w')
-        
-        import math
-        split_idx = math.floor(len(lines)*test_split) 
-        bed_fp_train.writelines(lines[split_idx:])
-        bed_fp_test.writelines(lines[:split_idx])
-        
-        fps = [bed_fp_train, bed_fp_test]
-        tmps = [temp_file_name_train, temp_file_name_test]
-        outs = [BedTool(tmp) for tmp in tmps]
+        out = [BedTool(tfn) for tfn in tfns]
         if out_paths is not None:
-            [out.moveto(pth) for (out, pth) in zip(outs,out_paths)]
-            [fp.close() for fp in fps]
-        return outs
+            out = [out_i.moveto(op) for out_i, op in zip(out, out_paths)]
+            [fp.close for fp in fps]
+        return out
 
     else:
         # Open via file name so that it is inherited properly by child processes.
