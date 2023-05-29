@@ -132,7 +132,7 @@ def tile_genome(
         tmps = [temp_file_name_train, temp_file_name_test]
         outs = [BedTool(tmp) for tmp in tmps]
         if out_paths is not None:
-            [out.moveto(pth) for (out, pth) in zip(outs,tmps)]
+            [out.moveto(pth) for (out, pth) in zip(outs,out_paths)]
             [fp.close() for fp in fps]
         return outs
 
