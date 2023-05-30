@@ -114,7 +114,7 @@ def tile_genome(
 
 
     bed_fp.seek(0)
-
+    lines = []
     if shuffle:
         lines = bed_fp.readlines()
         random.shuffle(lines)
