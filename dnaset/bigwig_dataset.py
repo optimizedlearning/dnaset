@@ -28,7 +28,8 @@ def tile_genome(
     enforce_common_length: bool = True,
     shuffle: Optional[bool] = False,
     out_paths: Optional[List[str]] = None,
-    test_split: Optional[float] = None
+    test_split: Optional[float] = None,
+    filter_nonstandard_chromosomes: Optional[bool] = True
         ):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
@@ -47,6 +48,12 @@ def tile_genome(
             shorter lengths (because the areas between gaps in the gap files
             is not evenly divisible by sequence_length).
         shuffle: whether to shuffle the lines in the output bed file.
+        test_split: if specified, will output two BedTool files. One of which
+            recieves the first fraction of segments specified by this parameter
+        out_paths: if test_split is specified, writes the output of the function
+            to the first and second paths specified
+        fitler_nonstandard_chromosomes: excludes any chromosomes that are not of the form
+            chrom[0-9|X|Y].
 
     returns:
         a BedTool object for the resulting bed file.
@@ -80,11 +87,12 @@ def tile_genome(
             }
 
     def write_bed(chrom, start, end):
+        if chrom.find('_')!=-1 and filter_nonstandard_chromosomes:
+            return
         if start >= end:
             return
         if enforce_common_length and start + sequence_length > end:
             return
-
         for line_start in range(start, end-start, stride):
             bed_fp.write(
                     f"{chrom}\t{line_start}\t{line_start + sequence_length}\n"
@@ -100,6 +108,7 @@ def tile_genome(
         assembly_starts[chrom] = gap_end
 
     for chrom in reference_fasta.keys():
+        
         write_bed(chrom, assembly_starts[chrom], len(reference_fasta[chrom]))
 
 
@@ -174,21 +183,19 @@ def bigwig_dataset_generator(
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
     if not isinstance(sequence_bed, BedTool):
         sequence_bed = BedTool(sequence_bed)
-
-    for interval in sequence_bed[start:stop]:
+    for i, interval in enumerate(sequence_bed[start:stop]):
         chrom = interval.chrom
         start = interval.start
         stop = interval.stop
-
         # we copy to make the resulting array mutable
         sequence = sequence_transform(reference_fasta[chrom][start:stop])
+
         values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
 
         yield {
                 'sequence': sequence,
                 'values': values
                 }
-
 
 class BigWigDataset(IterableDataset):
     '''
