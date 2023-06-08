@@ -130,36 +130,7 @@ def tile_genome(
 
     return out
 
-def train_test_split_file(
-    data_path: str,
-    out_paths: Optional[List[str]],
-    test_splits: Union[float,List[float]]
-    ):
-    '''
-    Performs a vanilla train-test split on a file for which each datapoint is
-    separated by a newline. Shuffles dataset before splitting
 
-    arguments:
-        data_path: name of file containing data
-        out_paths: names of files to output data to
-        test_splits: fraction of data you would like each file to recieve
-            out_paths[i] with recieve test_splits[i] of the data. Must
-            be same length as out_paths 
-    '''
-    assert len(out_paths) == len(test_splits), "out_paths and test_splits must be the same length"
-    assert (1.0-sum(test_splits))<1e-5, f"test_splits must sum to 1 (summed to {sum(test_splits)}"
-    infp = open(data_path,'r')
-    lines = infp.readlines()
-    random.shuffle(lines)
-    n_lines = len(lines)
-
-    for split,out_path in zip(test_splits,out_paths):
-        fp = open(out_path,'w')
-        for _ in range(0,math.floor(n_lines*split)):
-            if len(lines)==0:
-                break
-            fp.write(lines.pop(-1))
-        fp.close()
 
 
 def bigwig_dataset_generator(
