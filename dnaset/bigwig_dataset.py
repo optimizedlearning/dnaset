@@ -193,7 +193,7 @@ def bigwig_dataset_generator(
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
     if not isinstance(sequence_bed, BedTool):
         sequence_bed = BedTool(sequence_bed)
-    for i, interval in enumerate(sequence_bed[start:stop]):
+    for interval in sequence_bed[start:stop]:
         chrom = interval.chrom
         start = interval.start
         stop = interval.stop
