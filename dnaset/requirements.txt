@@ -1,8 +1,0 @@
-torch
-pybedtools
-pyfaidx
-pybigwig
-transformers
-tokenizers
-datasets
-

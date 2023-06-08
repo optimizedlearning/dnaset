@@ -27,9 +27,7 @@ def tile_genome(
     out_path: Optional[str] = None,
     enforce_common_length: bool = True,
     shuffle: Optional[bool] = False,
-    out_paths: Optional[List[str]] = None,
-    test_split: Optional[float] = None,
-    filter_nonstandard_chromosomes: Optional[bool] = True
+    chrom_ignore_chars: str = ""
         ):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
@@ -48,12 +46,8 @@ def tile_genome(
             shorter lengths (because the areas between gaps in the gap files
             is not evenly divisible by sequence_length).
         shuffle: whether to shuffle the lines in the output bed file.
-        test_split: if specified, will output two BedTool files. One of which
-            recieves the first fraction of segments specified by this parameter
-        out_paths: if test_split is specified, writes the output of the function
-            to the first and second paths specified
-        fitler_nonstandard_chromosomes: excludes any chromosomes that are not of the form
-            chrom[0-9|X|Y].
+        chrom_ignore_chars: if specified, will exclude any chromosomes that include 
+            any of the characters in the string 
 
     returns:
         a BedTool object for the resulting bed file.
@@ -87,7 +81,7 @@ def tile_genome(
             }
 
     def write_bed(chrom, start, end):
-        if chrom.find('_')!=-1 and filter_nonstandard_chromosomes:
+        if any([chrom.find(c)!=-1 for c in chrom_ignore_chars]):
             return
         if start >= end:
             return
@@ -118,38 +112,54 @@ def tile_genome(
     if shuffle:
         lines = bed_fp.readlines()
         random.shuffle(lines)
-        
-    if test_split:
+        bed_fp.seek(0)
+        bed_fp.writelines(lines)
+
+
+
+    # Open via file name so that it is inherited properly by child processes.
+    out = BedTool(temp_file_name)
+    if out_path is not None:
+        out = out.moveto(out_path)
         bed_fp.close()
-        #tfn = temp file name
-        fd, train_tfn = tempfile.mkstemp(suffix='.bigwig_torch.bed')
-        fd, test_tfn = tempfile.mkstemp(suffix='.bigwig_torch.bed')
-        tfns = [train_tfn, test_tfn]
-        fps = [open(tfn,"w") for tfn in [train_tfn, test_tfn]]
-        
-        split_idx = math.floor(test_split*len(lines))
-        fps[0].writelines(lines[split_idx:])
-        fps[1].writelines(lines[:split_idx])
 
-        out = [BedTool(tfn) for tfn in tfns]
-        if out_paths is not None:
-            out = [out_i.moveto(op) for out_i, op in zip(out, out_paths)]
-            [fp.close for fp in fps]
-        return out
+    # Note that since we made the tempfile with mkstemp, it will be the
+    # caller's responsibility to cleanup the tempfile when out_path == None.
+    # It may be ok most of the time to not clean it up and rely on some
+    # system policy to eventually delete temporary files.
 
-    else:
-        # Open via file name so that it is inherited properly by child processes.
-        out = BedTool(temp_file_name)
-        if out_path is not None:
-            out = out.moveto(out_path)
-            bed_fp.close()
+    return out
 
-        # Note that since we made the tempfile with mkstemp, it will be the
-        # caller's responsibility to cleanup the tempfile when out_path == None.
-        # It may be ok most of the time to not clean it up and rely on some
-        # system policy to eventually delete temporary files.
+def train_test_split_file(
+    data_path: str,
+    out_paths: Optional[List[str]],
+    test_splits: Union[float,List[float]]
+    ):
+    '''
+    Performs a vanilla train-test split on a file for which each datapoint is
+    separated by a newline. Shuffles dataset before splitting
 
-        return out
+    arguments:
+        data_path: name of file containing data
+        out_paths: names of files to output data to
+        test_splits: fraction of data you would like each file to recieve
+            out_paths[i] with recieve test_splits[i] of the data. Must
+            be same length as out_paths 
+    '''
+    assert len(out_paths) == len(test_splits), "out_paths and test_splits must be the same length"
+    assert (1.0-sum(test_splits))<1e-5, f"test_splits must sum to 1 (summed to {sum(test_splits)}"
+    infp = open(data_path,'r')
+    lines = infp.readlines()
+    random.shuffle(lines)
+    n_lines = len(lines)
+
+    for split,out_path in zip(test_splits,out_paths):
+        fp = open(out_path,'w')
+        for _ in range(0,math.floor(n_lines*split)):
+            if len(lines)==0:
+                break
+            fp.write(lines.pop(-1))
+        fp.close()
 
 
 def bigwig_dataset_generator(
