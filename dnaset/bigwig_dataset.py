@@ -9,8 +9,9 @@ import random
 
 from typing import Union, List, Optional, Callable
 
-import util
-
+import dnaset.util as util
+import math
+    
 
 def convert_single_to_list(maybe_list, base_type):
     if isinstance(maybe_list, base_type):
@@ -25,7 +26,8 @@ def tile_genome(
     stride: Optional[int] = None,
     out_path: Optional[str] = None,
     enforce_common_length: bool = True,
-    shuffle: Optional[bool] = False
+    shuffle: Optional[bool] = False,
+    chrom_ignore_chars: str = ""
         ):
     '''
     creates a bed file that tiles the provided genome, skipping gaps.
@@ -44,6 +46,8 @@ def tile_genome(
             shorter lengths (because the areas between gaps in the gap files
             is not evenly divisible by sequence_length).
         shuffle: whether to shuffle the lines in the output bed file.
+        chrom_ignore_chars: if specified, will exclude any chromosomes that include 
+            any of the characters in the string 
 
     returns:
         a BedTool object for the resulting bed file.
@@ -70,18 +74,19 @@ def tile_genome(
     gap_bed = gap_bed.sort()
 
     fd, temp_file_name = tempfile.mkstemp(suffix='.bigwig_torch.bed')
-    bed_fp = open(temp_file_name, mode='w')
+    bed_fp = open(temp_file_name, mode='w+')
 
     assembly_starts = {
             chrom: 0 for chrom in reference_fasta.keys()
             }
 
     def write_bed(chrom, start, end):
+        if any([chrom.find(c)!=-1 for c in chrom_ignore_chars]):
+            return
         if start >= end:
             return
         if enforce_common_length and start + sequence_length > end:
             return
-
         for line_start in range(start, end-start, stride):
             bed_fp.write(
                     f"{chrom}\t{line_start}\t{line_start + sequence_length}\n"
@@ -97,19 +102,20 @@ def tile_genome(
         assembly_starts[chrom] = gap_end
 
     for chrom in reference_fasta.keys():
+        
         write_bed(chrom, assembly_starts[chrom], len(reference_fasta[chrom]))
 
 
 
+    bed_fp.seek(0)
+    lines = []
     if shuffle:
-        bed_fp.close()
-        bed_fp = open(temp_file_name, mode='r')
         lines = bed_fp.readlines()
-        bed_fp.close()
         random.shuffle(lines)
-        bed_fp = open(temp_file_name, mode='w')
-        bed_fp.write(lines)
-        
+        bed_fp.seek(0)
+        bed_fp.writelines(lines)
+
+
 
     # Open via file name so that it is inherited properly by child processes.
     out = BedTool(temp_file_name)
@@ -123,6 +129,8 @@ def tile_genome(
     # system policy to eventually delete temporary files.
 
     return out
+
+
 
 
 def bigwig_dataset_generator(
@@ -156,21 +164,19 @@ def bigwig_dataset_generator(
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
     if not isinstance(sequence_bed, BedTool):
         sequence_bed = BedTool(sequence_bed)
-
     for interval in sequence_bed[start:stop]:
         chrom = interval.chrom
         start = interval.start
         stop = interval.stop
-
         # we copy to make the resulting array mutable
         sequence = sequence_transform(reference_fasta[chrom][start:stop])
+
         values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
 
         yield {
                 'sequence': sequence,
                 'values': values
                 }
-
 
 class BigWigDataset(IterableDataset):
     '''
