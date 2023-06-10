@@ -1,6 +1,3 @@
-import csv
-from randomAccessReader import CsvRandomAccessReader
-
 class BedLine():
 	def __init__(self,s):
 		s = s.split('\t')
@@ -38,7 +35,7 @@ class RBedTool():
 			fp.seek(fp.tell()-j)
 		
 		line_align(fp)
-		
+
 		for _ in range(idx-self.line):
 			fp.readline()
 		self.line = idx+1
