@@ -1,10 +1,17 @@
 import numpy as np
+import torch
 
 from pybedtools import BedTool
 from pyfaidx import Fasta
 
 def seq_to_array(s, copy=True):
     array = np.asarray(memoryview(str(s).encode('ascii')), dtype=np.uint8)
+    if copy:
+        array = array.copy()
+    return array
+
+def seq_to_torch(s, copy=True):
+    array = torch.Tensor(memoryview(str(s).encode('ascii')), dtype=np.uint8)
     if copy:
         array = array.copy()
     return array
