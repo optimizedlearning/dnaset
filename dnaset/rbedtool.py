@@ -1,3 +1,5 @@
+from itertools import islice
+
 class BedLine():
 	def __init__(self,s):
 		s = s.split('\t')
@@ -10,14 +12,21 @@ class RBedTool():
 	A simple class for iterating over a .bed file
 	'''
 	def __init__(self,pth):
+		'''
+			args:
+				pth - the path to your bed file
+		'''
 		#this is relatively fast, according to stack overflow
 		with open(pth, "rbU") as f:
 			self.sz = sum(1 for _ in f)
 		
 		self.fp = open(pth)
 		self.line = 0
+		self.sl = None
 
 	def __getitem__(self,idx):
+		if type(idx)==slice:
+			raise TypeError("Slice passed to RBedTool.__getitem__, please use RBedTool.slice for slicing")
 		def line_align(fp):
 			#backs up a file pointer character-by-character until it reaches a newline
 			while fp.tell()!=0 and fp.read(1)!='\n':
@@ -47,26 +56,77 @@ class RBedTool():
 	def __len__(self):
 		return self.sz
 
+	def slice(self,start = None, stop = None, step = None):
+		'''
+		Returns an iterator for this RBedTool over a slice of the data.
+		As far as I can tell, itertools does not support lazy loading for 
+		sliced data, so I implemented a separate method
+		args:
+			sl - a slice object (e.g. 10:24:2, 1:5, etc.)
+		returns:
+			RBedTool iterator that will iterate over the values specified by the slice
+		'''
+		sl = {
+			'start': start,
+			'stop': stop,
+			'step': step
+		}
+		if sl['start'] is None:
+			sl['start'] = 0
+		if sl['stop'] is None:
+			sl['stop'] = len(self)
+		if sl['step'] is None:
+			sl['step'] = 1
+
+		self.sl = sl
+		return self
+
 class RBedToolIterator:
 	'''
 	This is added so that multiple RBedToolIterators of the same RBedTool will not interfere with each other
 	'''
-	def __init__(self,rbedtool):
+	def __init__(self,rbedtool,sl=None):
 		self.rbedtool = rbedtool
+		sl = rbedtool.sl
+
+
+
+		if sl is not None:
+			self.line = sl['start'] 
+			self.stop = len(rbedtool) if sl['stop']==-1 else sl['stop'] #the line this iterator will stop at
+			self.step = sl['step']
+		else:
+			self.line = 0
+			self.stop = len(rbedtool)
+			self.step = 1
 		self.pos = 0
-		self.it = 0
+		self.init = False #Will be used to determine if rbedtool.line should be overridden on a given iteration
+		
+		#to prevent future calls to rbedtool.__iter__() from usuing this slice
+		rbedtool.sl = None
 
 	def __next__(self):
+		fp = self.rbedtool.fp
+		rbedtool = self.rbedtool
 
-		if self.it == len(self.rbedtool):
+		if self.line == self.stop:
 			raise StopIteration
-		self.rbedtool.fp.seek(self.pos)
-		self.rbedtool.line = self.it
+		
+		if self.init: #We don't want to call fp.seek() until we know where line self.line is
+			fp.seek(self.pos)
+			rbedtool.line = self.line
+			for _ in range(self.step):
+				if self.line==self.stop:
+					raise StopIteration
+				ret = rbedtool[self.line]
+				self.line+=1
+		else:
+			ret = rbedtool[self.line]
+			self.line+=1
+		
+		self.pos = fp.tell()
+		self.init = True
 
-		ret = self.rbedtool[self.it]
-
-		self.pos = self.rbedtool.fp.tell()
-		self.it+=1
 		return ret
 
     
