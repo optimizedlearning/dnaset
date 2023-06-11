@@ -10,7 +10,7 @@ import random
 from typing import Union, List, Optional, Callable
 
 import dnaset.util as util
-from rbedtool import RBedTool
+from dnaset.rbedtool import RBedTool
 import math
 import sys
 
