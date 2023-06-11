@@ -2,16 +2,20 @@
 import torch
 from torch.utils.data import IterableDataset
 import pyBigWig
-from pybedtools import BedTool
 from pyfaidx import Fasta
+from pybedtools import BedTool
 import tempfile
 import random
 
 from typing import Union, List, Optional, Callable
 
 import dnaset.util as util
+from rbedtool import RBedTool
 import math
-    
+import sys
+
+
+CATCH_GENERATOR_INDEX_ERROR = False
 
 def convert_single_to_list(maybe_list, base_type):
     if isinstance(maybe_list, base_type):
@@ -158,25 +162,60 @@ def bigwig_dataset_generator(
     bigwig_files = convert_single_to_list(bigwig_files, str)
 
     bigwigs = [pyBigWig.open(bw) for bw in bigwig_files]
-    if not isinstance(sequence_bed, BedTool):
-        sequence_bed = BedTool(sequence_bed)
+    if not isinstance(sequence_bed, RBedTool):
+        sequence_bed = RBedTool(sequence_bed)
     if not isinstance(reference_fasta, Fasta):
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
-    if not isinstance(sequence_bed, BedTool):
-        sequence_bed = BedTool(sequence_bed)
-    for interval in sequence_bed[start:stop]:
+    
+    def iterable_to_generator(iter):
+        def gen(start,stop):
+            if stop is None or stop==-1:
+                stop = len(iter)
+            while start < stop:
+                yield iter[start]
+                start += 1
+        return gen
+
+    def index_error_handler(msg):
+            if CATCH_GENERATOR_INDEX_ERROR:
+                print(msg)
+                return None
+            raise IndexError(msg)
+
+    for interval in sequence_bed.slice(start,stop):
         chrom = interval.chrom
         start = interval.start
         stop = interval.stop
         # we copy to make the resulting array mutable
-        sequence = sequence_transform(reference_fasta[chrom][start:stop])
-
-        values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
-
+        
+        try:
+            cause = "Fasta"
+            sequence = sequence_transform(reference_fasta[chrom][start:stop])
+            cause = "Bigwig"
+            values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
+        except (IndexError):
+            return index_error_handler(
+                f"Base pairs {start} to {stop} in chrom {chrom} are not accessible in {cause} file"
+            )
+        
         yield {
                 'sequence': sequence,
                 'values': values
                 }
+
+class catch_generator_index_error():
+    '''
+    Should only be used for with catch_out_of_range_generator():
+
+    Will cause index errors raised by the main for-loop of bigwig_dataset_generator to be caught
+    and printed to stderr
+    '''
+    def __enter__(self):
+        CATCH_OUT_OF_RANGE_GENERATOR=True
+    def __exit__(self, *args):
+        CATCH_OUT_OF_RANGE_GENERATOR=False
+
+
 
 class BigWigDataset(IterableDataset):
     '''
