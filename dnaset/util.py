@@ -11,7 +11,7 @@ def seq_to_array(s, copy=True):
     return array
 
 def seq_to_torch(s, copy=True):
-    array = torch.Tensor(memoryview(str(s).encode('ascii')), dtype=np.uint8)
+    array = torch.Tensor(memoryview(str(s).encode('ascii')), dtype=torch.uint8)
     if copy:
         array = array.copy()
     return array
