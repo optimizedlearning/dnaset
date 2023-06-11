@@ -1,15 +1,24 @@
 from itertools import islice
 
-class BedLine():
+class BedFrame():
 	def __init__(self,s):
-		s = s.split('\t')
-		self.chrom = s[0]
-		self.start = int(s[1])
-		self.stop = int(s[2])
+		try:
+			a = s.split('\t')
+			self.chrom = a[0]
+			self.start = int(a[1])
+			self.stop = int(a[2])
+		except:
+			raise ValueError(f"There was an issue while trying to parse BedFrame input ('{s}')")
 		
 class RBedTool():
 	'''
-	A simple class for iterating over a .bed file
+	A simple class for iterating over the lines of a bed file.
+	Accessing elements sequentially (such as with an iterator) is
+	O(1). Otherwise, the BedTool will perform a linear search
+	for the accessed line.
+
+	__getitem__() will return a BedFrame object, a simple struct with
+	feilds chrom, stop, and start
 	'''
 	def __init__(self,pth):
 		'''
@@ -48,7 +57,7 @@ class RBedTool():
 		for _ in range(idx-self.line):
 			fp.readline()
 		self.line = idx+1
-		return BedLine(fp.readline())
+		return BedFrame(fp.readline())
 
 	def __iter__(self):
 		return RBedToolIterator(self)
