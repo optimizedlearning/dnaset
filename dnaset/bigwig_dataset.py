@@ -195,9 +195,10 @@ def bigwig_dataset_generator(
             cause = "Bigwig"
             values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
         except (IndexError):
-            return index_error_handler(
+            index_error_handler(
                 f"Base pairs {start} to {stop} in chrom {chrom} are not accessible in {cause} file"
             )
+            continue
         
         yield {
                 'sequence': sequence,
