@@ -187,7 +187,9 @@ def bigwig_dataset_generator(
         start = interval.start
         stop = interval.stop
         # we copy to make the resulting array mutable
-        
+        if chrom is None: #handles parse error in rbedtool
+            continue
+
         try:
             cause = "Fasta"
             sequence = sequence_transform(reference_fasta[chrom][start:stop])
