@@ -9,10 +9,8 @@ import random
 
 from typing import Union, List, Optional, Callable
 
-import dnaset.util as util
-from dnaset.rbedtool import RBedTool
-import math
-import sys
+import util
+from rbedtool import RBedTool
 
 
 CATCH_GENERATOR_INDEX_ERROR = False

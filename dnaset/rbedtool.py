@@ -1,5 +1,3 @@
-from itertools import islice
-
 CATCH_BED_PARSE_ERROR = False
 current_line = 0
 
@@ -18,6 +16,8 @@ class BedFrame():
 				print(s)
 				print("catch_bed_parser_error is enabled. self.chrom will be None")
 				self.chrom = None
+				self.start = None
+				self.stop = None
 			else:
 				raise ValueError(s)
 
