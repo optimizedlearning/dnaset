@@ -15,6 +15,7 @@ class BedFrame():
 			s = f"There was an issue while trying to parse BedFrame input\nline {current_line}: {s}"
 			if CATCH_BED_PARSE_ERROR:
 				print(s)
+				print("catch_bed_parser_error is enabled. self.chrom will be None")
 				self.chrom = None
 			else:
 				raise ValueError(s)
