@@ -177,10 +177,11 @@ def bigwig_dataset_generator(
         return gen
 
     def index_error_handler(msg):
-            if CATCH_GENERATOR_INDEX_ERROR:
-                print(msg)
-                return None
-            raise IndexError(msg)
+        global CATCH_GENERATOR_INDEX_ERROR
+        if CATCH_GENERATOR_INDEX_ERROR:
+            print(msg)
+            return None
+        raise IndexError(msg)
 
     for interval in sequence_bed.slice(start,stop):
         chrom = interval.chrom
@@ -213,9 +214,11 @@ class catch_generator_index_error():
     and printed to stderr
     '''
     def __enter__(self):
-        CATCH_OUT_OF_RANGE_GENERATOR=True
+        global CATCH_GENERATOR_INDEX_ERROR
+        CATCH_GENERATOR_INDEX_ERROR=True
     def __exit__(self, *args):
-        CATCH_OUT_OF_RANGE_GENERATOR=False
+        global CATCH_GENERATOR_INDEX_ERROR
+        CATCH_GENERATOR_INDEX_ERROR=True
 
 
 
@@ -326,3 +329,4 @@ class BigWigDataset(IterableDataset):
                     iter_start,
                     iter_end,
                 )
+

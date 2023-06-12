@@ -6,6 +6,7 @@ current_line = 0
 class BedFrame():
 	def __init__(self,s):
 		global current_line
+		global CATCH_BED_PARSE_ERROR
 		try:
 			a = s.split('\t')
 			self.chrom = a[0]
@@ -156,7 +157,9 @@ class RBedToolIterator:
 
 	
 class catch_bed_parse_error():
-	def __enter__():
+	def __enter__(self):
+		global CATCH_BED_PARSE_ERROR
 		CATCH_BED_PARSE_ERROR = True
-	def __exit__():
+	def __exit__(self,*args):
+		global CATCH_BED_PARSE_ERROR
 		CATCH_BED_PARSE_ERROR = False
