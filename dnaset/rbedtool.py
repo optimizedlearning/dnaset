@@ -15,10 +15,10 @@ class BedFrame():
 			s = f"There was an issue while trying to parse BedFrame input\nline {current_line}: {s}"
 			if CATCH_BED_PARSE_ERROR:
 				print(s)
-				self = None
+				self.chrom = None
 			else:
 				raise ValueError(s)
-				
+
 class RBedTool():
 	'''
 	A simple class for iterating over the lines of a bed file.
