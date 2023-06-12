@@ -1,15 +1,24 @@
 from itertools import islice
 
+CATCH_BED_PARSE_ERROR = False
+current_line = 0
+
 class BedFrame():
 	def __init__(self,s):
+		global current_line
 		try:
 			a = s.split('\t')
 			self.chrom = a[0]
 			self.start = int(a[1])
 			self.stop = int(a[2])
 		except:
-			raise ValueError(f"There was an issue while trying to parse BedFrame input ('{s}')")
-		
+			s = f"There was an issue while trying to parse BedFrame input\nline {current_line}: {s}"
+			if CATCH_BED_PARSE_ERROR:
+				print(s)
+				self = None
+			else:
+				raise ValueError(s)
+				
 class RBedTool():
 	'''
 	A simple class for iterating over the lines of a bed file.
@@ -34,6 +43,8 @@ class RBedTool():
 		self.sl = None
 
 	def __getitem__(self,idx):
+		global current_line
+
 		if type(idx)==slice:
 			raise TypeError("Slice passed to RBedTool.__getitem__, please use RBedTool.slice for slicing")
 		def line_align(fp):
@@ -51,12 +62,14 @@ class RBedTool():
 			fp.seek(fp.tell()-j)
 			self.line -= fp.read(j).count('\n')
 			fp.seek(fp.tell()-j)
-		
 		line_align(fp)
 
 		for _ in range(idx-self.line):
 			fp.readline()
+
+		current_line = self.line
 		self.line = idx+1
+
 		return BedFrame(fp.readline())
 
 	def __iter__(self):
@@ -141,3 +154,8 @@ class RBedToolIterator:
     
 
 	
+class catch_bed_parse_error():
+	def __enter__():
+		CATCH_BED_PARSE_ERROR = True
+	def __exit__():
+		CATCH_BED_PARSE_ERROR = False
