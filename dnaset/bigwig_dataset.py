@@ -141,7 +141,9 @@ def bigwig_dataset_generator(
     sequence_bed: Union[str, BedTool],
     sequence_transform: Callable = util.seq_to_array,
     start: int = 0,
-    stop: int = -1):
+    stop: int = -1,
+    out_type: str = 'dict'
+    ):
     '''
     generates numpy sequence arrays from a bigwig and bed file.
 
@@ -186,6 +188,7 @@ def bigwig_dataset_generator(
         start = interval.start
         stop = interval.stop
         # we copy to make the resulting array mutable
+
         if chrom is None: #handles parse error in rbedtool
             continue
 
@@ -199,11 +202,13 @@ def bigwig_dataset_generator(
                 f"Base pairs {start} to {stop} in chrom {chrom} are not accessible in {cause} file"
             )
             continue
-        
-        yield {
-                'sequence': sequence,
-                'values': values
-                }
+        if out_type == 'dict':
+            yield {
+                    'sequence': sequence,
+                    'values': values
+                    }
+        else:
+            yield sequence, values
 
 class catch_generator_index_error():
     '''
@@ -238,6 +243,7 @@ class BigWigDataset(IterableDataset):
         reference_fasta_file: str,
         input_bed_file: str,
         sequence_transform: Callable= util.seq_to_array,
+        out_type = "dict"
     ):
         '''
         arguments:
@@ -246,6 +252,10 @@ class BigWigDataset(IterableDataset):
             input_bed_file: a bed file path specifying the intervals to use in the dataset
             sequence_transform: a function called to transform the output sequence.
                 defaults to converting the sequence into a numpy array.
+            out_type: format of the output.
+                dict -> __getitem__ will return a dict with fields 'sequence' and 'values'
+                tuple -> __getitem__ will return a tuple (sequence, values)
+                other -> will raise error
         '''
 
         self.reference_fasta_file = reference_fasta_file
@@ -254,7 +264,7 @@ class BigWigDataset(IterableDataset):
             sequence_always_upper=True)
 
         self.input_bed_file = input_bed_file
-        self.input_bed = BedTool(input_bed_file)
+        self.input_bed = RBedTool(input_bed_file)
 
         self.sequence_transform = sequence_transform
 
@@ -270,23 +280,25 @@ class BigWigDataset(IterableDataset):
 
         self.open_bigwig_files = [pyBigWig.open(bw) for bw in bigwig_files]
 
+        supported_out_types = ["dict","tuple"]
+        if out_type not in supported_out_types:
+            raise ValueError(f"out type must be 'tuple' or 'dict' (got {out_type})")
+        self.out_type = out_type
+
     def __len__(self):
         # TODO: pybedtools is embarassingly slow at calculating lengths,
         # so we defer calculuation until needed. In future, we may need
         # to find a replacement for pybedtools that is not so slow.
         # For example, even a pure python implementation is faster even though
         # pybedtools is using cython to parse the lines of the bed file...
-        if self.length is None:
-            self.length = len(self.input_bed)
-        return self.length
+
+        # rbedtools will compute the length of the file in lines at initialization 
+        return len(self.input_bed)
 
     def __getitem__(self, idx):
-        # bed_file[idx] is actually an O(idx) time operation.
-        # so, we need some kind of hack to speed things up.
-        if self.random_access_input_bed is None:
-            self.random_access_input_bed = list(iter(self.input_bed))
+        
 
-        bed_line = self.random_access_input_bed[idx]
+        bed_line = self.input_bed[idx]
 
         chrom = bed_line.chrom
         start = bed_line.start
@@ -301,11 +313,13 @@ class BigWigDataset(IterableDataset):
             bw.values(chrom, start, stop, numpy=True)
             for bw in self.open_bigwig_files
         ]
-
-        return {
-                'sequence': sequence,
-                'values': values
-                }
+        if self.out_type=='dict':
+            return {
+                    'sequence': sequence,
+                    'values': values
+                    }
+        else:
+            return sequence, values
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
@@ -327,5 +341,6 @@ class BigWigDataset(IterableDataset):
                     self.sequence_transform,
                     iter_start,
                     iter_end,
+                    self.out_type
                 )
 
