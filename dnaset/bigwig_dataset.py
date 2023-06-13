@@ -207,8 +207,10 @@ def bigwig_dataset_generator(
                     'sequence': sequence,
                     'values': values
                     }
-        else:
+        elif out_type == 'tuple':
             yield sequence, values
+        else:
+            raise ValueError(f"out type must be 'tuple' or 'int' (got {out_type})")
 
 class catch_generator_index_error():
     '''
