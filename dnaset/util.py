@@ -11,9 +11,10 @@ def seq_to_array(s, copy=True):
     return array
 
 def seq_to_torch(s, copy=True):
-    array = torch.Tensor(memoryview(str(s).encode('ascii')), dtype=torch.uint8)
+    array = torch.Tensor(memoryview(str(s).encode('ascii'))) #I'm not entirely clear on what memoryview is used for
+    array = array.type(torch.uint8)
     if copy:
-        array = array.copy()
+        array = torch.clone(array)
     return array
 
 
@@ -76,6 +77,36 @@ def bed_to_sequence_generator(
             'stop': stop,
             'sequence': sequence,
         }
+
+'''
+def bed_to_bbed(pth, out_pth, n_chroms = None):
+
+    Converts a bed file into a compressed format that allows for random line access
+
+    args:
+        pth - location of bed file
+        n_chroms - number of chromosomes expected in the BED file. Will throw an error
+            if unique chromosomes exceeds this number
+
+    if n_chroms is not None:
+        chroms = [None for _ in range(n_chroms)]
+    else:
+        chroms = []
+    i = 0
+    with open(pth) as ifp, open(out_pth,'wb') as ofp:
+        for line in ifp:
+            chrom = line.split('\t')[0]
+            if chrom not in chroms:
+                if n_chroms is None:
+                    chroms.append(chrom)
+                else:
+                    try:
+                        chroms[i]=chrom
+                    except(IndexError):
+                        raise AssertionError(f"Number of unique chroms exceeds expected value ({n_chroms})\nChromosomes identified: {chroms}")
+
+    
+'''
 
 
 
