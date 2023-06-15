@@ -157,6 +157,7 @@ def bigwig_dataset_generator(
             Note that it will take O(start) time to yield the first value!
         stop: which row of the bed file to  end at (negative numbers index from the end of the file, just
             like regular array slicing)
+	out_type: the output type. Can be 'dict' or 'tuple'
     '''
 
     bigwig_files = convert_single_to_list(bigwig_files, str)
@@ -288,12 +289,6 @@ class BigWigDataset(IterableDataset):
         self.out_type = out_type
 
     def __len__(self):
-        # TODO: pybedtools is embarassingly slow at calculating lengths,
-        # so we defer calculuation until needed. In future, we may need
-        # to find a replacement for pybedtools that is not so slow.
-        # For example, even a pure python implementation is faster even though
-        # pybedtools is using cython to parse the lines of the bed file...
-
         # rbedtools will compute the length of the file in lines at initialization 
         return len(self.input_bed)
 
