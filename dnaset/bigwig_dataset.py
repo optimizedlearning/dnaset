@@ -2,16 +2,18 @@
 import torch
 from torch.utils.data import IterableDataset
 import pyBigWig
-from pybedtools import BedTool
 from pyfaidx import Fasta
+from pybedtools import BedTool
 import tempfile
 import random
 
 from typing import Union, List, Optional, Callable
 
-import dnaset.util as util
-import math
-    
+from dnaset import util
+from dnaset.rbedtool import RBedTool
+
+
+CATCH_GENERATOR_INDEX_ERROR = False
 
 def convert_single_to_list(maybe_list, base_type):
     if isinstance(maybe_list, base_type):
@@ -139,7 +141,9 @@ def bigwig_dataset_generator(
     sequence_bed: Union[str, BedTool],
     sequence_transform: Callable = util.seq_to_array,
     start: int = 0,
-    stop: int = -1):
+    stop: int = -1,
+    out_type: str = 'dict'
+    ):
     '''
     generates numpy sequence arrays from a bigwig and bed file.
 
@@ -153,30 +157,77 @@ def bigwig_dataset_generator(
             Note that it will take O(start) time to yield the first value!
         stop: which row of the bed file to  end at (negative numbers index from the end of the file, just
             like regular array slicing)
+	out_type: the output type. Can be 'dict' or 'tuple'
     '''
 
     bigwig_files = convert_single_to_list(bigwig_files, str)
 
     bigwigs = [pyBigWig.open(bw) for bw in bigwig_files]
-    if not isinstance(sequence_bed, BedTool):
-        sequence_bed = BedTool(sequence_bed)
+    if not isinstance(sequence_bed, RBedTool):
+        sequence_bed = RBedTool(sequence_bed)
     if not isinstance(reference_fasta, Fasta):
         reference_fasta = Fasta(reference_fasta, sequence_always_upper=True)
-    if not isinstance(sequence_bed, BedTool):
-        sequence_bed = BedTool(sequence_bed)
-    for interval in sequence_bed[start:stop]:
+    
+    def iterable_to_generator(iter):
+        def gen(start,stop):
+            if stop is None or stop==-1:
+                stop = len(iter)
+            while start < stop:
+                yield iter[start]
+                start += 1
+        return gen
+
+    def index_error_handler(msg):
+        global CATCH_GENERATOR_INDEX_ERROR
+        if CATCH_GENERATOR_INDEX_ERROR:
+            print(msg)
+            return None
+        raise IndexError(msg)
+
+    for interval in sequence_bed.slice(start,stop):
         chrom = interval.chrom
         start = interval.start
         stop = interval.stop
         # we copy to make the resulting array mutable
-        sequence = sequence_transform(reference_fasta[chrom][start:stop])
 
-        values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
+        if chrom is None: #handles parse error in rbedtool
+            continue
 
-        yield {
-                'sequence': sequence,
-                'values': values
-                }
+        try:
+            cause = "Fasta"
+            sequence = sequence_transform(reference_fasta[chrom][start:stop])
+            cause = "Bigwig"
+            values = [bw.values(chrom, start, stop, numpy=True) for bw in bigwigs]
+        except (IndexError):
+            index_error_handler(
+                f"Base pairs {start} to {stop} in chrom {chrom} are not accessible in {cause} file"
+            )
+            continue
+        if out_type == 'dict':
+            yield {
+                    'sequence': sequence,
+                    'values': values
+                    }
+        elif out_type == 'tuple':
+            yield sequence, values
+        else:
+            raise ValueError(f"out type must be 'tuple' or 'int' (got {out_type})")
+
+class catch_generator_index_error():
+    '''
+    Should only be used for with catch_out_of_range_generator():
+
+    Will cause index errors raised by the main for-loop of bigwig_dataset_generator to be caught
+    and printed to stderr
+    '''
+    def __enter__(self):
+        global CATCH_GENERATOR_INDEX_ERROR
+        CATCH_GENERATOR_INDEX_ERROR=True
+    def __exit__(self, *args):
+        global CATCH_GENERATOR_INDEX_ERROR
+        CATCH_GENERATOR_INDEX_ERROR=True
+
+
 
 class BigWigDataset(IterableDataset):
     '''
@@ -195,6 +246,7 @@ class BigWigDataset(IterableDataset):
         reference_fasta_file: str,
         input_bed_file: str,
         sequence_transform: Callable= util.seq_to_array,
+        out_type = "dict"
     ):
         '''
         arguments:
@@ -203,6 +255,10 @@ class BigWigDataset(IterableDataset):
             input_bed_file: a bed file path specifying the intervals to use in the dataset
             sequence_transform: a function called to transform the output sequence.
                 defaults to converting the sequence into a numpy array.
+            out_type: format of the output.
+                dict -> __getitem__ will return a dict with fields 'sequence' and 'values'
+                tuple -> __getitem__ will return a tuple (sequence, values)
+                other -> will raise error
         '''
 
         self.reference_fasta_file = reference_fasta_file
@@ -211,7 +267,7 @@ class BigWigDataset(IterableDataset):
             sequence_always_upper=True)
 
         self.input_bed_file = input_bed_file
-        self.input_bed = BedTool(input_bed_file)
+        self.input_bed = RBedTool(input_bed_file)
 
         self.sequence_transform = sequence_transform
 
@@ -227,23 +283,19 @@ class BigWigDataset(IterableDataset):
 
         self.open_bigwig_files = [pyBigWig.open(bw) for bw in bigwig_files]
 
+        supported_out_types = ["dict","tuple"]
+        if out_type not in supported_out_types:
+            raise ValueError(f"out type must be 'tuple' or 'dict' (got {out_type})")
+        self.out_type = out_type
+
     def __len__(self):
-        # TODO: pybedtools is embarassingly slow at calculating lengths,
-        # so we defer calculuation until needed. In future, we may need
-        # to find a replacement for pybedtools that is not so slow.
-        # For example, even a pure python implementation is faster even though
-        # pybedtools is using cython to parse the lines of the bed file...
-        if self.length is None:
-            self.length = len(self.input_bed)
-        return self.length
+        # rbedtools will compute the length of the file in lines at initialization 
+        return len(self.input_bed)
 
     def __getitem__(self, idx):
-        # bed_file[idx] is actually an O(idx) time operation.
-        # so, we need some kind of hack to speed things up.
-        if self.random_access_input_bed is None:
-            self.random_access_input_bed = list(iter(self.input_bed))
+        
 
-        bed_line = self.random_access_input_bed[idx]
+        bed_line = self.input_bed[idx]
 
         chrom = bed_line.chrom
         start = bed_line.start
@@ -258,11 +310,13 @@ class BigWigDataset(IterableDataset):
             bw.values(chrom, start, stop, numpy=True)
             for bw in self.open_bigwig_files
         ]
-
-        return {
-                'sequence': sequence,
-                'values': values
-                }
+        if self.out_type=='dict':
+            return {
+                    'sequence': sequence,
+                    'values': values
+                    }
+        else:
+            return sequence, values
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
@@ -284,4 +338,6 @@ class BigWigDataset(IterableDataset):
                     self.sequence_transform,
                     iter_start,
                     iter_end,
+                    self.out_type
                 )
+
